@@ -79,11 +79,8 @@ class SubscriberState(EventState):
         return None
 
     def on_enter(self, userdata):
-        if not self._connected:
-            if self._connect():
-                Logger.loginfo('Successfully subscribed to previously unavailable topic %s' % self._topic)
-            else:
-                Logger.logwarn('Topic %s still not available, giving up.' % self._topic)
+        if not self._connected and not self._connect():
+            Logger.logwarn('Topic %s still not available, giving up.' % self._topic)
 
         if self._connected and self._clear and self._sub.has_msg(self._topic):
             self._sub.remove_last_msg(self._topic)

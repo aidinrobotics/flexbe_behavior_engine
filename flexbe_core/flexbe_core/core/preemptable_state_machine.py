@@ -39,7 +39,6 @@ from flexbe_msgs.msg import BehaviorSync
 
 from flexbe_core.core.lockable_state_machine import LockableStateMachine
 from flexbe_core.core.preemptable_state import PreemptableState
-from flexbe_core.logger import Logger
 from flexbe_core.proxy import ProxySubscriberCached
 
 
@@ -64,7 +63,7 @@ class PreemptableStateMachine(LockableStateMachine):
 
     def _preempt_cb(self, msg):
         if not self._is_controlled:
-            Logger.localinfo(f'Preempting {self.name}!')
+            # Logger.localinfo(f'Preempting {self.name}!')
             PreemptableState.preempt = True
 
     def on_stop(self):
@@ -103,7 +102,6 @@ class PreemptableStateMachine(LockableStateMachine):
                 self.process_sync_request()
 
             if outcome is not None:
-                Logger.loginfo(f"PreemptableStateMachine {self.name} spin() - done with outcome={outcome}")
                 break
 
             self.sleep()
@@ -129,4 +127,4 @@ class PreemptableStateMachine(LockableStateMachine):
 
     @classmethod
     def process_sync_request(cls):
-        Logger.localinfo("Ignoring PreemptableState process_sync_request")
+        pass

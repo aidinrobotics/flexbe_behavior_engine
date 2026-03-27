@@ -55,7 +55,6 @@ class ProxyPublisher:
     def shutdown():
         """Shuts this proxy down by reseting all publishers."""
         try:
-            print(f"Shutdown proxy publisher with {len(ProxyPublisher._topics)} topics ...")
             for topic, pub in ProxyPublisher._topics.items():
                 try:
                     ProxyPublisher._topics[topic] = None
@@ -64,7 +63,6 @@ class ProxyPublisher:
                     Logger.error(f"Something went wrong during shutdown of proxy publisher for {topic}!\n%s %s",
                                  type(exc), str(exc))
 
-            print("Shutdown proxy publisher  ...")
             ProxyPublisher._topics.clear()
 
         except Exception as exc:  # pylint: disable=W0703
@@ -111,16 +109,16 @@ class ProxyPublisher:
                 # Change in required msg_type for topic name  - update publisher with new type
                 if msg_type.__name__ == ProxyPublisher._topics[topic].msg_type.__name__:
                     # Same message type name, so likely due to reloading Python module on behavior change
-                    Logger.localinfo(f'Existing publisher for {topic} with same message type name,'
-                                     ' but different instance - re-create publisher!')
+                    # Logger.localinfo(f'Existing publisher for {topic} with same message type name,'
+                    #                  ' but different instance - re-create publisher!')
                     ProxyPublisher._node.executor.create_task(ProxyPublisher.destroy_publisher,
                                                               ProxyPublisher._topics[topic], topic)
                     qos = qos or QOS_DEFAULT
                     ProxyPublisher._topics[topic] = ProxyPublisher._node.create_publisher(msg_type, topic, qos)
                 else:
-                    Logger.info(f'Mis-matched msg_types ({msg_type.__name__} vs.'
-                                f' {ProxyPublisher._topics[topic].msg_type.__name__}) for {topic}'
-                                f' (possibly due to reload of behavior)!')
+                    # Logger.info(f'Mis-matched msg_types ({msg_type.__name__} vs.'
+                    #             f' {ProxyPublisher._topics[topic].msg_type.__name__}) for {topic}'
+                    #             f' (possibly due to reload of behavior)!')
                     raise TypeError("Trying to replace existing publisher with different msg type")
 
     @classmethod
@@ -154,10 +152,6 @@ class ProxyPublisher:
                 # This is the case if the same class is imported multiple times
                 # To avoid rclpy TypeErrors, we will automatically convert to the base type
                 # used in the original publisher
-                Logger.localinfo('Publish - converting datatype for '
-                                 '%s!\n%s: %s/%s' % (topic, str(msg.__class__.__name__), str(id(msg.__class__)),
-                                                     str(id(ProxyPublisher._topics[topic].msg_type))))
-
                 new_msg = ProxyPublisher._topics[topic].msg_type()
                 assert new_msg.__slots__ == msg.__slots__, f"Message attributes for {topic} do not match!"
                 for attr in msg.__slots__:
@@ -174,8 +168,6 @@ class ProxyPublisher:
             ProxyPublisher._topics[topic].publish(new_msg)
         except Exception as exc:  # pylint: disable=W0703
             Logger.warning('Something went wrong when publishing to %s!\n%s: %s' % (topic, str(type(exc)), str(exc)))
-            import traceback  # pylint: disable=C0415
-            Logger.localinfo(traceback.format_exc().replace("%", "%%"))
 
     @classmethod
     def number_of_subscribers(cls, topic):
@@ -210,20 +202,14 @@ class ProxyPublisher:
         tmr = Timer(.5, ProxyPublisher._print_wait_warning, [topic])
         tmr.start()
         available = ProxyPublisher._wait_for_subscribers(pub, timeout)
-        warning_sent = False
         try:
             tmr.cancel()
         except Exception:  # pylint: disable=W0703
-            # already printed the warning
-            warning_sent = True
+            pass
 
-        # Problem here
         if not available:
             Logger.error("Waiting for subscribers on %s timed out!" % topic)
             return False
-
-        if warning_sent:
-            Logger.info("Finally found subscriber on %s..." % (topic))
 
         return True
 
@@ -248,10 +234,10 @@ class ProxyPublisher:
     def destroy_publisher(cls, pub, topic):
         """Handle publisher destruction from within the executor threads."""
         try:
-            if ProxyPublisher._node.destroy_publisher(pub):
-                Logger.localinfo(f'Destroyed the proxy publisher for {topic} ({id(pub)})!')
-            else:
-                Logger.localwarn(f'Some issue destroying the proxy publisher for {topic}!')
+            # if ProxyPublisher._node.destroy_publisher(pub):
+            #     Logger.localinfo(f'Destroyed the proxy publisher for {topic} ({id(pub)})!')
+            # else:
+            #     Logger.localwarn(f'Some issue destroying the proxy publisher for {topic}!')
             del pub
         except Exception as exc:  # pylint: disable=W0703
             Logger.error("Something went wrong destroying proxy publisher"

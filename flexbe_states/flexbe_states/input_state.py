@@ -97,7 +97,6 @@ class InputState(EventState):
                     #     Never unpickle data received from an untrusted or unauthenticated source.
                     response_data = pickle.loads(input_data)
 
-                    Logger.localinfo(f" InputState returned {type(response_data)} : {response_data}")
                     userdata.data = response_data
                 except Exception as exc:  # pylint: disable=W0703
                     Logger.logwarn(f"Was unable to load provided data:\n    '{result.data}'\n    {str(exc)}")

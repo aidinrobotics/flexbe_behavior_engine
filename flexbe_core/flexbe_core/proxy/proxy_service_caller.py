@@ -56,7 +56,6 @@ class ProxyServiceCaller:
     def shutdown():
         """Shut down this proxy by reseting all service callers."""
         try:
-            print(f"Shutdown proxy service caller with {len(ProxyServiceCaller._services)} topics ...")
             for topic, service in ProxyServiceCaller._services.items():
                 try:
                     ProxyServiceCaller._services[topic] = None
@@ -69,11 +68,10 @@ class ProxyServiceCaller:
                     Logger.error("Something went wrong during shutdown of proxy service"
                                  f" caller for {topic}!\n  {type(exc)} - {exc}")
 
-            print("Shutdown proxy service caller  ...")
             ProxyServiceCaller._results.clear()
 
         except Exception as exc:  # pylint: disable=W0703
-            print(f'Something went wrong during shutdown of proxy service caller !\n{str(exc)}')
+            Logger.error(f'Something went wrong during shutdown of proxy service caller !\n{str(exc)}')
 
     def __init__(self, topics=None, wait_duration=10):
         """
@@ -104,7 +102,6 @@ class ProxyServiceCaller:
         @param wait_duration: Defines how long to wait for the given service if it is not available right now.
         """
         if topic not in ProxyServiceCaller._services:
-            Logger.localinfo(f'Set up ProxyServiceCaller for new topic {topic} ...')
             ProxyServiceCaller._services[topic] = ProxyServiceCaller._node.create_client(srv_type, topic)
             if isinstance(wait_duration, float):
                 ProxyServiceCaller._check_service_available(topic, wait_duration)
@@ -112,8 +109,6 @@ class ProxyServiceCaller:
         else:
             if srv_type is not ProxyServiceCaller._services[topic].srv_type:
                 if srv_type.__name__ == ProxyServiceCaller._services[topic].srv_type.__name__:
-                    Logger.localinfo(f'Existing service for {topic} with same message type name,'
-                                     f' but different instance - re-create service!')
                     ProxyServiceCaller._node.executor.create_task(ProxyServiceCaller.destroy_service,
                                                                   ProxyServiceCaller._services[topic], topic)
 
@@ -172,8 +167,6 @@ class ProxyServiceCaller:
         else:
             # Same class definition instance as stored
             new_request = request
-
-        Logger.loginfo("Client about to call service")
 
         return ProxyServiceCaller._services[topic].call(new_request)
 
@@ -257,10 +250,8 @@ class ProxyServiceCaller:
             return False
 
         if not isinstance(wait_duration, float):
-            Logger.localinfo(f"Check for service {topic} requires floating point wait_duration in seconds (change to 0.001)!")
             wait_duration = 0.001
 
-        warning_sent = False
         available = False
         wait_timer = None
         try:
@@ -277,13 +268,10 @@ class ProxyServiceCaller:
             try:
                 wait_timer.cancel()
             except Exception:  # pylint: disable=W0703
-                # already printed the warning
-                warning_sent = True
+                pass
 
         if not available:
             Logger.error(f"Service client {topic} not available! (timed out with wait_duration={wait_duration:.3f} seconds)")
-        elif warning_sent:
-            Logger.info("Finally found service %s..." % (topic))
 
         return available
 
@@ -295,10 +283,10 @@ class ProxyServiceCaller:
     def destroy_service(cls, srv, topic):
         """Handle service client destruction from within the executor threads."""
         try:
-            if ProxyServiceCaller._node.destroy_client(srv):
-                Logger.localinfo(f'Destroyed the proxy service caller for {topic} ({id(srv)})!')
-            else:
-                Logger.localwarn(f'Some issue destroying the proxy service caller for {topic}!')
+            # if ProxyServiceCaller._node.destroy_client(srv):
+                # Logger.localinfo(f'Destroyed the proxy service caller for {topic} ({id(srv)})!')
+            # else:
+                # Logger.localwarn(f'Some issue destroying the proxy service caller for {topic}!')
             del srv
         except Exception as exc:  # pylint: disable=W0703
             Logger.error("Something went wrong destroying service caller"

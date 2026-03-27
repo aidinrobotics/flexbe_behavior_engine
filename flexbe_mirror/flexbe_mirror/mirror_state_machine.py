@@ -34,7 +34,6 @@ import zlib
 
 import rclpy
 
-from flexbe_core import Logger
 from flexbe_core.core import PreemptableStateMachine
 from flexbe_msgs.msg import BehaviorSync
 from flexbe_mirror.mirror_state import MirrorState
@@ -67,7 +66,6 @@ class MirrorStateMachine(PreemptableStateMachine):
                         self._last_deep_state_name = None
 
             if outcome is not None:
-                Logger.localinfo(f"MirrorStateMachine {self.name} spin() - done with outcome={outcome}")
                 break
 
             # Process fast independent of simulation time in order to keep up with onboard
@@ -76,7 +74,6 @@ class MirrorStateMachine(PreemptableStateMachine):
         return outcome
 
     def destroy(self):
-        Logger.localinfo(f'Destroy mirror state machine {self.name} ...')
         self._notify_stop()
 
     def _notify_stop(self):

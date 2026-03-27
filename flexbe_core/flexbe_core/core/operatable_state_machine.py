@@ -35,7 +35,6 @@ import zlib
 from std_msgs.msg import Empty, UInt8, Int32
 from flexbe_msgs.msg import Container, ContainerStructure, BehaviorSync, CommandFeedback
 
-from flexbe_core.core.state_machine import StateMachineError
 from flexbe_core.core.operatable_state import OperatableState
 from flexbe_core.core.preemptable_state_machine import PreemptableStateMachine
 from flexbe_core.core.user_data import UserData
@@ -142,7 +141,7 @@ class OperatableStateMachine(PreemptableStateMachine):
             self._last_exception = exc
             Logger.logerr('Failed to execute state %s:\n%s' % (self.current_state_label, str(exc)))
             import traceback  # pylint: disable=C0415
-            Logger.localinfo(traceback.format_exc().replace("%", "%%"))  # Guard against exeception including format!
+            Logger.logerr(traceback.format_exc().replace("%", "%%"))
 
         return outcome
 
@@ -162,13 +161,6 @@ class OperatableStateMachine(PreemptableStateMachine):
             try:
                 deep_state = self.get_deep_state()
                 if deep_state is not None:
-                    try:
-                        current_label = self.current_state_label
-                    except StateMachineError:  # pylint: disable=W0703
-                        current_label = "None"
-
-                    Logger.localinfo(f"Sync request processed by {self.id} {self.name} with "
-                                     f"current state={current_label} (deep state = {deep_state.name})")
                     msg.current_state_checksum = zlib.adler32(deep_state.path.encode()) & 0x7fffffff
 
                 else:
@@ -179,7 +171,6 @@ class OperatableStateMachine(PreemptableStateMachine):
             self._inner_sync_request = False
             self._pub.publish('flexbe/mirror/sync', msg)
             self._pub.publish('flexbe/command_feedback', CommandFeedback(command="sync", args=[]))
-            Logger.localinfo("<-- Sent synchronization message for mirror.")
         else:
             Logger.error('Inner sync processed for %s - but no sync request flag?' % (self.name))
 
@@ -190,7 +181,6 @@ class OperatableStateMachine(PreemptableStateMachine):
         return self._autonomy[self.current_state_label][outcome]
 
     def destroy(self):
-        Logger.localinfo(f'Destroy state machine {self.name}: {self.id} ...')
         self._notify_stop()
         self._disable_ros_control()
         self._sub.unsubscribe_topic('flexbe/command/autonomy', inst_id=id(self))
@@ -215,7 +205,6 @@ class OperatableStateMachine(PreemptableStateMachine):
         self.set_name(name)
         self.id = beh_id
 
-        Logger.localinfo(f'--> Set up pub/sub for behavior {self.name}: {self.id} ...')
         # Update mirror with currently active state (high bandwidth mode)
         self._pub.createPublisher('flexbe/mirror/sync', BehaviorSync)
         # Sends the current structure to the mirror
@@ -233,32 +222,24 @@ class OperatableStateMachine(PreemptableStateMachine):
         if OperatableStateMachine.autonomy_level != 255:
             self._enable_ros_control()
 
-        Logger.localinfo(f'--> Wait for behavior {self.name}: {self.id} publishers to activate ...')
         self.wait(seconds=0.25)  # no clean way to wait for publisher to be ready...
 
-        Logger.localinfo(f'--> Notify behavior {self.name}: {self.id} states to start ...')
         self._notify_start()
-        Logger.localinfo(f'--> behavior {self.name}: {self.id} confirmation complete!')
 
     # operator callbacks
 
     def _set_autonomy_level(self, msg):
         """Set the current autonomy level."""
-        if OperatableStateMachine.autonomy_level != msg.data:
-            Logger.localinfo(f'--> Request autonomy changed to {msg.data} on {self.name}')
         if msg.data < 0:
-            Logger.localinfo(f'--> Negative autonomy level={msg.data} - Preempt {self.name}!')
             self._preempt_cb(msg)
         else:
             OperatableStateMachine.autonomy_level = msg.data
         self._pub.publish('flexbe/command_feedback', CommandFeedback(command="autonomy", args=[]))
 
     def _sync_callback(self, msg):
-        Logger.localinfo(f"--> Synchronization requested ... ({self.id}) {self.name}")
         self._inner_sync_request = True  # Flag to process at the end of spin loop
 
     def _attach_callback(self, msg):
-        Logger.localinfo("--> Enabling attach control...")
         # set autonomy level
         OperatableStateMachine.autonomy_level = msg.data
         # enable control of states
@@ -268,12 +249,9 @@ class OperatableStateMachine(PreemptableStateMachine):
         cfb = CommandFeedback(command="attach")
         cfb.args.append(self.name)
         self._pub.publish('flexbe/command_feedback', cfb)
-        Logger.localinfo("<-- Sent attach confirm.")
 
     def _mirror_structure_callback(self, msg):
-        Logger.localinfo(f"--> Creating behavior structure for mirror id={msg.data} ...")
         self._pub.publish('flexbe/mirror/structure', self._build_structure_msg())
-        Logger.localinfo("<-- Sent behavior structure to mirror.")
         # enable control of states since a mirror is listening
         self._enable_ros_control()
 

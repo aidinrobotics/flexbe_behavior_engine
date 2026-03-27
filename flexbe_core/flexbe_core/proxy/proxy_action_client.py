@@ -59,7 +59,6 @@ class ProxyActionClient:
     def shutdown():
         """Shuts this proxy down by reseting all action clients."""
         try:
-            print(f"Shutdown proxy action clients with {len(ProxyActionClient._clients)} topics ...")
             for topic, client in ProxyActionClient._clients.items():
                 try:
                     ProxyActionClient._clients[topic] = None
@@ -67,7 +66,6 @@ class ProxyActionClient:
                 except Exception as exc:  # pylint: disable=W0703
                     Logger.error(f"Something went wrong during shutdown of proxy action client for {topic}!\n{str(exc)}")
 
-            print("Shutdown proxy action clients  ...")
             ProxyActionClient._result.clear()
             ProxyActionClient._result_status.clear()
             ProxyActionClient._feedback.clear()
@@ -75,7 +73,7 @@ class ProxyActionClient:
             ProxyActionClient._has_active_goal.clear()
             ProxyActionClient._current_goal.clear()
         except Exception as exc:  # pylint: disable=W0703
-            print(f'Something went wrong during shutdown of proxy action clients!\n{ str(exc)}')
+            Logger.error(f'Something went wrong during shutdown of proxy action clients!\n{ str(exc)}')
 
     def __init__(self, topics=None, wait_duration=10):
         """
@@ -113,8 +111,8 @@ class ProxyActionClient:
         else:
             if action_type is not ProxyActionClient._clients[topic]._action_type:
                 if action_type.__name__ == ProxyActionClient._clients[topic]._action_type.__name__:
-                    Logger.localinfo(f'Existing action client for {topic}'
-                                     f' with same action type name, but different instance -  re-create  client!')
+                    # Logger.localinfo(f'Existing action client for {topic}'
+                    #                  f' with same action type name, but different instance -  re-create  client!')
 
                     # Destroy the existing client in executor thread
                     client = ProxyActionClient._clients[topic]
@@ -155,7 +153,6 @@ class ProxyActionClient:
                 # To avoid rclpy TypeErrors, we will automatically convert to the base type
                 # used in the original service/publisher clients
                 new_goal = ProxyActionClient._clients[topic]._action_type.Goal()
-                Logger.localinfo(f"  converting goal {str(type(new_goal))} vs. {str(type(goal))}")
                 assert new_goal.__slots__ == goal.__slots__, f"Message attributes for {topic} do not match!"
                 for attr in goal.__slots__:
                     setattr(new_goal, attr, getattr(goal, attr))
@@ -328,20 +325,15 @@ class ProxyActionClient:
 
         available = client.wait_for_server(wait_duration)
 
-        warning_sent = False
         if wait_duration > 2.0:
             try:
                 tmr.cancel()
             except Exception:  # pylint: disable=W0703
-                # already printed the warning
-                warning_sent = True
+                pass
 
         if not available:
             Logger.logerr(f"Action client/server '{topic}' is not available - timed out after {wait_duration:.3f} seconds!")
             return False
-
-        if warning_sent:
-            Logger.loginfo(f"Finally found action client/server '{topic}'!")
 
         return True
 
@@ -353,10 +345,10 @@ class ProxyActionClient:
     def destroy_client(cls, client, topic):
         """Handle client destruction from within the executor threads."""
         try:
-            if ProxyActionClient._node.destroy_client(client):
-                Logger.localinfo(f'Destroyed the proxy action client for {topic} ({id(client)})!')
-            else:
-                Logger.localwarn(f'Some issue destroying the proxy action client for {topic}!')
+            # if ProxyActionClient._node.destroy_client(client):
+            #     Logger.localinfo(f'Destroyed the proxy action client for {topic} ({id(client)})!')
+            # else:
+            #     Logger.localwarn(f'Some issue destroying the proxy action client for {topic}!')
             del client
         except Exception as exc:  # pylint: disable=W0703
             Logger.error("Something went wrong destroying proxy action client"

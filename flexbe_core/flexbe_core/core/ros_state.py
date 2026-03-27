@@ -56,9 +56,7 @@ class RosState(State):
         if RosState._breakpoints is None:
             try:
                 RosState._breakpoints = node.get_parameter('breakpoints').get_parameter_value().string_array_value
-                Logger.localinfo(f"RosState:  using breakpoints={RosState._breakpoints}")
             except ParameterNotDeclaredException:
-                Logger.localinfo("RosState: No 'breakpoints' parameter is defined")
                 RosState._breakpoints = []
 
     def __init__(self, *args, **kwargs):
@@ -67,8 +65,6 @@ class RosState(State):
         self._desired_period_ns = (1 / 10) * 1e9
 
         if "desired_rate" in kwargs:
-            Logger.localinfo('RosState: Set desired state update '
-                             f'rate to {kwargs["desired_rate"]} Hz.')
             self._desired_period_ns = (1 / kwargs["desired_rate"]) * 1e9
 
         self._is_controlled = False

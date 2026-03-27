@@ -36,7 +36,6 @@ from std_msgs.msg import UInt8, String
 from flexbe_msgs.msg import OutcomeRequest
 
 from flexbe_core.core.preemptable_state import PreemptableState
-from flexbe_core.logger import Logger
 from flexbe_core.state_logger import StateLogger
 
 
@@ -76,7 +75,6 @@ class OperatableState(PreemptableState):
                 if outcome != self._last_requested_outcome:
                     self._pub.publish(self._request_topic, OutcomeRequest(outcome=self.outcomes.index(outcome),
                                                                           target=self.path))
-                    Logger.localinfo("<-- Want result: %s > %s" % (self.name, outcome))
                     StateLogger.log('flexbe.operator', self, type='request', request=outcome,
                                     autonomy=self.parent.autonomy_level,
                                     required=self.parent.get_required_autonomy(outcome))
@@ -86,7 +84,6 @@ class OperatableState(PreemptableState):
             # autonomy level is high enough, report the executed transition
             elif outcome is not None and outcome in self.outcomes:
                 outcome_index = self.outcomes.index(outcome)
-                Logger.localinfo("State result: %s > %s (%d)" % (self.name, outcome, outcome_index))
                 self._pub.publish(self._outcome_topic, UInt8(data=outcome_index))
                 self._pub.publish(self._debug_topic, String(data="%s > %s" % (self.path, outcome)))
                 if self._force_transition:

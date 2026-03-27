@@ -52,11 +52,10 @@ class ProxyTransformListener:
     def shutdown():
         """Shut down this proxy by reseting the transform listener."""
         try:
-            print("Shutdown proxy transform listener  ...")
             ProxyTransformListener._listener = None
             ProxyTransformListener._buffer = None
         except Exception as exc:  # pylint: disable=W0703
-            print(f'Something went wrong during shutdown of proxy transform listener  !\n{str(exc)}')
+            Logger.error(f'Something went wrong during shutdown of proxy transform listener  !\n{str(exc)}')
 
     def __init__(self):
         """Only start listening to tf if someone creates an instance of this listener."""
