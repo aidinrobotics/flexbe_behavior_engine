@@ -28,10 +28,12 @@
 
 
 """A proxy for calling actions provides a single point for all state action interfaces."""
+import uuid as uuid_lib
 from functools import partial
 from threading import Timer
 
 from rclpy.action import ActionClient
+from unique_identifier_msgs.msg import UUID as UUIDMsg
 
 from flexbe_core.logger import Logger
 
@@ -48,6 +50,23 @@ class ProxyActionClient:
     _result = {}
     _result_status = {}
     _feedback = {}
+
+    # ──────────────────────────────────────────────────────────────
+    # Stale-result race guard (UUID-based).
+    #
+    # 문제:
+    #   state1이 blend 조건으로 일찍 exit → 같은 topic에 state2가
+    #   새 goal을 보냄 → state1의 지연 도착 result/feedback이
+    #   state2의 슬롯을 오염시켜 state2가 즉시 'done'으로 오판.
+    #
+    # 해결:
+    #   send_goal 시점에 UUID를 직접 생성해 goal_uuid로 넘기고,
+    #   _active_uuid[topic]을 "현재 유효한 goal"의 진실의 원천으로 둔다.
+    #   모든 콜백(goal accept / result / feedback)은 등록 시점의
+    #   UUID를 클로저로 캡처해두었다가, 실행 시 _active_uuid와
+    #   비교해서 일치하지 않으면 조용히 drop한다.
+    # ──────────────────────────────────────────────────────────────
+    _active_uuid = {}  # topic(str) → bytes (현재 유효한 goal uuid)
 
     @staticmethod
     def initialize(node):
@@ -72,6 +91,7 @@ class ProxyActionClient:
             ProxyActionClient._cancel_current_goal.clear()
             ProxyActionClient._has_active_goal.clear()
             ProxyActionClient._current_goal.clear()
+            ProxyActionClient._active_uuid.clear()
         except Exception as exc:  # pylint: disable=W0703
             Logger.error(f'Something went wrong during shutdown of proxy action clients!\n{ str(exc)}')
 
@@ -163,31 +183,75 @@ class ProxyActionClient:
             # Same class definition instance as stored
             new_goal = goal
 
+        # ── Generate a goal UUID and register it as the active one for this topic.
+        #    이 한 줄이 "이전 goal의 모든 in-flight 콜백을 즉시 무효화" 하는 역할.
+        goal_uuid_bytes = uuid_lib.uuid4().bytes
+        goal_uuid_msg = UUIDMsg(uuid=list(goal_uuid_bytes))
+        ProxyActionClient._active_uuid[topic] = goal_uuid_bytes
+
         # send goal
         ProxyActionClient._clients[topic].wait_for_server()
         future = ProxyActionClient._clients[topic].send_goal_async(
             new_goal,
-            feedback_callback=lambda f: ProxyActionClient._feedback_callback(topic, f)
+            feedback_callback=partial(
+                ProxyActionClient._feedback_callback,
+                topic=topic,
+                captured_uuid=goal_uuid_bytes,
+            ),
+            goal_uuid=goal_uuid_msg,
         )
 
-        future.add_done_callback(partial(ProxyActionClient._done_callback, topic=topic))
+        future.add_done_callback(
+            partial(ProxyActionClient._done_callback, topic=topic, captured_uuid=goal_uuid_bytes)
+        )
 
     @classmethod
-    def _done_callback(cls, future, topic):
+    def _done_callback(cls, future, topic, captured_uuid):
+        # Stale guard: 이 accept 콜백이 등록된 이후 새 send_goal이 발생했다면
+        # captured_uuid != active_uuid 이 되어 이 goal은 더 이상 "현재 goal"이 아님.
+        if ProxyActionClient._active_uuid.get(topic) != captured_uuid:
+            # 이 goal의 result_future에 콜백을 붙이지 않으면, 이후 result가 와도
+            # 아무도 구독하지 않으므로 _result[topic]이 오염되지 않는다.
+            return
+
         ProxyActionClient._current_goal[topic] = future
-        result = future.result().get_result_async()
-        result.add_done_callback(partial(ProxyActionClient._result_callback, topic=topic))
+        try:
+            goal_handle = future.result()
+        except Exception as exc:  # pylint: disable=W0703
+            Logger.logerr(f"[{topic}] Failed to fetch goal handle: {exc}")
+            ProxyActionClient._has_active_goal[topic] = False
+            return
+
+        if not goal_handle.accepted:
+            Logger.logwarn(f"[{topic}] Goal was rejected by server")
+            ProxyActionClient._has_active_goal[topic] = False
+            return
+
+        result_future = goal_handle.get_result_async()
+        result_future.add_done_callback(
+            partial(ProxyActionClient._result_callback, topic=topic, captured_uuid=captured_uuid)
+        )
 
     @classmethod
-    def _result_callback(cls, future, topic):
-        result = future.result().result
-        result_status = future.result().status
-        ProxyActionClient._result[topic] = result
-        ProxyActionClient._result_status[topic] = result_status
+    def _result_callback(cls, future, topic, captured_uuid):
+        # Stale guard: result가 도착했지만 그 사이 더 새로운 goal이 나갔다면 drop.
+        if ProxyActionClient._active_uuid.get(topic) != captured_uuid:
+            return
+
+        try:
+            wrapped = future.result()
+            ProxyActionClient._result[topic] = wrapped.result
+            ProxyActionClient._result_status[topic] = wrapped.status
+        except Exception as exc:  # pylint: disable=W0703
+            Logger.logerr(f"[{topic}] Failed to fetch result: {exc}")
         ProxyActionClient._has_active_goal[topic] = False
 
     @classmethod
-    def _feedback_callback(cls, topic, feedback):
+    def _feedback_callback(cls, feedback, topic, captured_uuid):
+        # Stale guard: 이전 goal의 feedback이 새어들어오는 것을 차단.
+        # (use_feedback_gate에서 transition_ready=True가 이전 state에서 새는 것 방지)
+        if ProxyActionClient._active_uuid.get(topic) != captured_uuid:
+            return
         ProxyActionClient._feedback[topic] = feedback
 
     @classmethod
@@ -302,6 +366,8 @@ class ProxyActionClient:
 
         ProxyActionClient._cancel_current_goal[topic] = True
         ProxyActionClient._current_goal[topic] = None
+        # active_uuid도 비워 이후 도착할 콜백을 자연스럽게 drop시킴
+        ProxyActionClient._active_uuid[topic] = None
 
     @classmethod
     def _check_topic_available(cls, topic, wait_duration=0.1):
